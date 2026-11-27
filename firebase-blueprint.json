@@ -1,0 +1,718 @@
+{
+  "entities": {
+    "Admin": {
+      "title": "Admin",
+      "description": "Authorized system administrator record stored in /admins/{uid}. Client writes are completely forbidden.",
+      "type": "object",
+      "properties": {
+        "email": {
+          "type": "string",
+          "format": "email",
+          "maxLength": 160,
+          "description": "Verified administrator email address."
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120,
+          "description": "Administrator display name."
+        },
+        "role": {
+          "type": "string",
+          "enum": ["super_admin"],
+          "description": "Fixed admin role."
+        },
+        "createdAt": {
+          "type": "object",
+          "description": "Server timestamp of admin record creation."
+        }
+      },
+      "required": ["email", "displayName", "role", "createdAt"]
+    },
+    "Agent": {
+      "title": "Agent",
+      "description": "Agent account and subscription metadata managed strictly by the Admin. Passwords are NEVER stored here.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Firebase Auth UID matching the document ID."
+        },
+        "fullName": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 120,
+          "description": "Full display name of the agent."
+        },
+        "username": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 40,
+          "pattern": "^[a-z0-9._\\-]+$",
+          "description": "Normalized login username for the agent."
+        },
+        "internalEmail": {
+          "type": "string",
+          "format": "email",
+          "minLength": 6,
+          "maxLength": 120,
+          "description": "Auto-generated internal email used for Firebase Authentication."
+        },
+        "phone": {
+          "type": "string",
+          "minLength": 6,
+          "maxLength": 30,
+          "description": "Agent contact phone number."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["active", "disabled"],
+          "description": "Operational account status controlled by Admin."
+        },
+        "planDuration": {
+          "type": "string",
+          "enum": ["6m", "12m", "custom"],
+          "description": "Selected subscription term (6 months, 1 year, or custom)."
+        },
+        "subscriptionStart": {
+          "type": "object",
+          "description": "Firestore Timestamp for subscription start date."
+        },
+        "subscriptionEnd": {
+          "type": "object",
+          "description": "Firestore Timestamp for subscription end date."
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 500,
+          "description": "Optional admin notes about the agent."
+        },
+        "createdAt": {
+          "type": "object",
+          "description": "Server timestamp of creation."
+        },
+        "updatedAt": {
+          "type": "object",
+          "description": "Server timestamp of last update."
+        },
+        "createdBy": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "UID of the Admin who created this agent."
+        }
+      },
+      "required": [
+        "uid",
+        "fullName",
+        "username",
+        "internalEmail",
+        "phone",
+        "status",
+        "planDuration",
+        "subscriptionStart",
+        "subscriptionEnd",
+        "createdAt",
+        "updatedAt",
+        "createdBy"
+      ]
+    },
+    "Tower": {
+      "title": "Tower",
+      "description": "Distribution tower managed by an active agent.",
+      "type": "object",
+      "properties": {
+        "agentId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Owner agent UID."
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "description": "Tower name or code."
+        },
+        "location": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160,
+          "description": "Geographic location or neighborhood."
+        },
+        "capacity": {
+          "type": "number",
+          "description": "Maximum subscriber capacity (1 to 10000)."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["active", "maintenance", "offline"],
+          "description": "Operational state of the tower."
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 500,
+          "description": "Optional technical notes."
+        },
+        "createdAt": {
+          "type": "object",
+          "description": "Server timestamp of creation."
+        },
+        "updatedAt": {
+          "type": "object",
+          "description": "Server timestamp of last update."
+        }
+      },
+      "required": [
+        "agentId",
+        "name",
+        "location",
+        "capacity",
+        "status",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Subscriber": {
+      "title": "Subscriber",
+      "description": "End-user internet subscriber managed by an active agent.",
+      "type": "object",
+      "properties": {
+        "agentId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Owner agent UID."
+        },
+        "fullName": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 120,
+          "description": "Subscriber full name."
+        },
+        "phone": {
+          "type": "string",
+          "minLength": 6,
+          "maxLength": 30,
+          "description": "Subscriber phone number."
+        },
+        "username": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 60,
+          "description": "PPPoE or network account username."
+        },
+        "address": {
+          "type": "string",
+          "maxLength": 200,
+          "description": "Optional home or office address."
+        },
+        "category": {
+          "type": "string",
+          "enum": ["towers", "national"],
+          "description": "Optional subscriber section classification ('towers' or 'national'). Legacy docs without category default to 'towers'."
+        },
+        "serviceType": {
+          "type": "string",
+          "maxLength": 60,
+          "description": "Optional internet service provider/type (e.g., Air Link, جزيرة, SAS, Horizon)."
+        },
+        "towerId": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "Associated tower document ID (or empty string if unassigned or national project)."
+        },
+        "towerName": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "Denormalized tower name for fast table rendering."
+        },
+        "planName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80,
+          "description": "Subscription package name."
+        },
+        "monthlyPrice": {
+          "type": "number",
+          "description": "Monthly subscription price."
+        },
+        "subscriptionStart": {
+          "type": "object",
+          "description": "Firestore Timestamp for subscriber plan start."
+        },
+        "subscriptionEnd": {
+          "type": "object",
+          "description": "Firestore Timestamp for subscriber plan expiry."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["active", "expired", "suspended"],
+          "description": "Subscriber service status."
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 500,
+          "description": "Optional notes."
+        },
+        "createdAt": {
+          "type": "object",
+          "description": "Server timestamp of creation."
+        },
+        "updatedAt": {
+          "type": "object",
+          "description": "Server timestamp of last update."
+        }
+      },
+      "required": [
+        "agentId",
+        "fullName",
+        "phone",
+        "username",
+        "towerId",
+        "towerName",
+        "planName",
+        "monthlyPrice",
+        "subscriptionStart",
+        "subscriptionEnd",
+        "status",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Debt": {
+      "title": "Debt",
+      "description": "Debt balance owed by a subscriber to an active agent.",
+      "type": "object",
+      "properties": {
+        "agentId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Owner agent UID."
+        },
+        "subscriberId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Related subscriber document ID."
+        },
+        "subscriberName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120,
+          "description": "Denormalized subscriber full name."
+        },
+        "category": {
+          "type": "string",
+          "enum": ["towers", "national"],
+          "description": "Optional debt section ('towers' or 'national'). Legacy docs default to 'towers'."
+        },
+        "monthlySubscriptionId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Optional linked monthly subscription ledger record ID for automatic repayment sync."
+        },
+        "totalAmount": {
+          "type": "number",
+          "description": "Total debt amount."
+        },
+        "paidAmount": {
+          "type": "number",
+          "description": "Amount paid so far."
+        },
+        "remainingAmount": {
+          "type": "number",
+          "description": "Remaining unpaid balance."
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "description": "Reason for the debt (e.g., monthly renewal, router installation)."
+        },
+        "dueDate": {
+          "type": "object",
+          "description": "Firestore Timestamp for debt due date."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["unpaid", "partial", "paid"],
+          "description": "Payment state of the debt."
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 500,
+          "description": "Optional notes."
+        },
+        "createdAt": {
+          "type": "object",
+          "description": "Server timestamp of creation."
+        },
+        "updatedAt": {
+          "type": "object",
+          "description": "Server timestamp of last update."
+        }
+      },
+      "required": [
+        "agentId",
+        "subscriberId",
+        "subscriberName",
+        "totalAmount",
+        "paidAmount",
+        "remainingAmount",
+        "reason",
+        "dueDate",
+        "status",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Payment": {
+      "title": "Payment",
+      "description": "Financial payment ledger entry for subscriptions and debt repayments.",
+      "type": "object",
+      "properties": {
+        "agentId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Owner agent UID."
+        },
+        "subscriberId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Related subscriber document ID."
+        },
+        "subscriberName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120,
+          "description": "Subscriber name."
+        },
+        "category": {
+          "type": "string",
+          "enum": ["towers", "national"],
+          "description": "Optional section ('towers' or 'national'). Legacy docs default to 'towers'."
+        },
+        "type": {
+          "type": "string",
+          "enum": ["subscription", "debt_payment"],
+          "description": "Payment category."
+        },
+        "amount": {
+          "type": "number",
+          "description": "Collected payment amount."
+        },
+        "referenceId": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "Optional reference document ID (debtId or subscriberId)."
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 300,
+          "description": "Optional payment notes."
+        },
+        "paidAt": {
+          "type": "object",
+          "description": "Firestore Timestamp of payment."
+        },
+        "createdAt": {
+          "type": "object",
+          "description": "Server timestamp of creation."
+        }
+      },
+      "required": [
+        "agentId",
+        "subscriberId",
+        "subscriberName",
+        "type",
+        "amount",
+        "paidAt",
+        "createdAt"
+      ]
+    },
+    "MonthlySubscription": {
+      "title": "MonthlySubscription",
+      "description": "Archived monthly subscription ledger record created strictly upon actual subscription activation or renewal.",
+      "type": "object",
+      "properties": {
+        "agentId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Owner agent UID."
+        },
+        "subscriberId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Related subscriber document ID."
+        },
+        "subscriberName": {
+          "type": "string",
+          "minLength": 2,
+          "maxLength": 120,
+          "description": "Subscriber full triple name at subscription time."
+        },
+        "subscriberPhone": {
+          "type": "string",
+          "minLength": 6,
+          "maxLength": 30,
+          "description": "Subscriber phone number for quick WhatsApp follow-up."
+        },
+        "subscriberUsername": {
+          "type": "string",
+          "maxLength": 60,
+          "description": "Optional subscriber network username snapshot at activation time."
+        },
+        "receiptNumber": {
+          "type": "string",
+          "maxLength": 40,
+          "description": "Optional unique receipt number generated automatically upon activation."
+        },
+        "category": {
+          "type": "string",
+          "enum": ["towers", "national"],
+          "description": "Section ledger ('towers' or 'national')."
+        },
+        "serviceType": {
+          "type": "string",
+          "maxLength": 60,
+          "description": "Optional service type snapshot at subscription activation (e.g., Air Link, جزيرة, SAS, Horizon)."
+        },
+        "towerId": {
+          "type": "string",
+          "maxLength": 128,
+          "description": "Tower document ID (empty for national project)."
+        },
+        "towerName": {
+          "type": "string",
+          "maxLength": 100,
+          "description": "Denormalized tower name (or empty for national project)."
+        },
+        "subscriptionMonth": {
+          "type": "string",
+          "minLength": 7,
+          "maxLength": 7,
+          "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])$",
+          "description": "Subscription month key in YYYY-MM format."
+        },
+        "planName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80,
+          "description": "Subscribed plan name."
+        },
+        "amount": {
+          "type": "number",
+          "description": "Total subscription fee for this activation."
+        },
+        "paidAmount": {
+          "type": "number",
+          "description": "Amount paid for this monthly subscription."
+        },
+        "debtAmount": {
+          "type": "number",
+          "description": "Unpaid debt balance for this monthly subscription."
+        },
+        "paymentStatus": {
+          "type": "string",
+          "enum": ["paid", "received", "has_debt", "no_debt"],
+          "description": "Payment status: paid (مسدد), received (واصل), has_debt (عليه دين), no_debt (لا يوجد عليه دين)."
+        },
+        "linkedDebtId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Optional debt document ID linked to this monthly record."
+        },
+        "activationDate": {
+          "type": "object",
+          "description": "Firestore Timestamp of subscription activation."
+        },
+        "expiryDate": {
+          "type": "object",
+          "description": "Firestore Timestamp of subscription expiry."
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 500,
+          "description": "Optional notes."
+        },
+        "createdAt": {
+          "type": "object",
+          "description": "Server timestamp of creation."
+        },
+        "updatedAt": {
+          "type": "object",
+          "description": "Server timestamp of last update."
+        }
+      },
+      "required": [
+        "agentId",
+        "subscriberId",
+        "subscriberName",
+        "subscriberPhone",
+        "category",
+        "towerId",
+        "towerName",
+        "subscriptionMonth",
+        "planName",
+        "amount",
+        "paidAmount",
+        "debtAmount",
+        "paymentStatus",
+        "activationDate",
+        "expiryDate",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "AdminSettings": {
+      "title": "AdminSettings",
+      "description": "Admin contact settings stored at /adminSettings/general for 7-day agent subscription renewal notices.",
+      "type": "object",
+      "properties": {
+        "contactPhone": {
+          "type": "string",
+          "maxLength": 30,
+          "description": "Admin contact phone number included in agent subscription renewal WhatsApp notices."
+        },
+        "whatsappCountryCode": {
+          "type": "string",
+          "maxLength": 8,
+          "description": "Optional default dialing country code for WhatsApp links (e.g., 964)."
+        },
+        "updatedAt": {
+          "type": "object",
+          "description": "Server timestamp of last update."
+        },
+        "updatedBy": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "UID of the admin who updated the settings."
+        }
+      },
+      "required": [
+        "contactPhone",
+        "updatedAt",
+        "updatedBy"
+      ]
+    },
+    "AgentSettings": {
+      "title": "AgentSettings",
+      "description": "Per-agent workspace configuration stored at /agents/{agentId}/settings/general.",
+      "type": "object",
+      "properties": {
+        "agentId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "description": "Owner agent UID."
+        },
+        "businessName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120,
+          "description": "Agent office or network display name."
+        },
+        "supportPhone": {
+          "type": "string",
+          "maxLength": 30,
+          "description": "Support phone number shown on receipts/workspace."
+        },
+        "whatsappCountryCode": {
+          "type": "string",
+          "maxLength": 8,
+          "description": "Optional default international dialing code for WhatsApp links (e.g., 964)."
+        },
+        "currency": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 16,
+          "description": "Preferred currency code (e.g., IQD, USD, SAR)."
+        },
+        "expiryAlertDays": {
+          "type": "number",
+          "description": "Number of days before subscriber expiry to trigger warning (1 to 90)."
+        },
+        "defaultPlans": {
+          "type": "array",
+          "description": "Bounded list (max 15) of default internet subscription packages."
+        },
+        "updatedAt": {
+          "type": "object",
+          "description": "Server timestamp of last settings update."
+        }
+      },
+      "required": [
+        "agentId",
+        "businessName",
+        "supportPhone",
+        "currency",
+        "expiryAlertDays",
+        "defaultPlans",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/admins/{uid}": {
+      "schema": { "$ref": "#/entities/Admin" },
+      "description": "Trusted administrator directory. Client writes and deletes are completely blocked."
+    },
+    "/adminSettings/{settingId}": {
+      "schema": { "$ref": "#/entities/AdminSettings" },
+      "description": "Global admin contact settings (general) used for 7-day agent subscription renewal notices."
+    },
+    "/agents/{agentId}": {
+      "schema": { "$ref": "#/entities/Agent" },
+      "description": "Agent accounts and subscriptions managed exclusively by Admins. Document ID equals Agent Auth UID."
+    },
+    "/agents/{agentId}/towers/{towerId}": {
+      "schema": { "$ref": "#/entities/Tower" },
+      "description": "Distribution towers owned by the agent."
+    },
+    "/agents/{agentId}/subscribers/{subscriberId}": {
+      "schema": { "$ref": "#/entities/Subscriber" },
+      "description": "Subscribers managed by the agent (towers and national project sections)."
+    },
+    "/agents/{agentId}/debts/{debtId}": {
+      "schema": { "$ref": "#/entities/Debt" },
+      "description": "Debts owed by subscribers to the agent (separated by section)."
+    },
+    "/agents/{agentId}/payments/{paymentId}": {
+      "schema": { "$ref": "#/entities/Payment" },
+      "description": "Payment ledger records for reports and accounting."
+    },
+    "/agents/{agentId}/monthlySubscriptions/{recordId}": {
+      "schema": { "$ref": "#/entities/MonthlySubscription" },
+      "description": "Archived monthly subscription ledger created only upon actual subscription activation/renewal."
+    },
+    "/agents/{agentId}/settings/{settingId}": {
+      "schema": { "$ref": "#/entities/AgentSettings" },
+      "description": "Agent workspace settings (currency, WhatsApp country code, default plans, alert thresholds)."
+    }
+  }
+}

@@ -1,0 +1,690 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Pillar 0: Global Default-Deny Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // ==================== GLOBAL PRIMITIVES ====================
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidOptionalString(data, field, maxLen) {
+      return !(field in data) || (data[field] is string && data[field].size() <= maxLen);
+    }
+
+    function isValidOptionalId(data, field) {
+      return !(field in data) || isValidId(data[field]);
+    }
+
+    function isValidOptionalCategory(data) {
+      return !('category' in data) || (data.category in ['towers', 'national']);
+    }
+
+    // Bootstrapped verified Admin OR immutable /admins/{uid} directory
+    function isAdmin() {
+      return isSignedIn()
+        && request.auth.token.email_verified == true
+        && (
+          request.auth.token.email == 'raed.alhijaj81@gmail.com'
+          || exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+        );
+    }
+
+    // Master Gate: enforces active status & unexpired subscription on server time
+    function isActiveAgent(agentId) {
+      return isSignedIn()
+        && request.auth.uid == agentId
+        && exists(/databases/$(database)/documents/agents/$(agentId))
+        && get(/databases/$(database)/documents/agents/$(agentId)).data.uid == agentId
+        && get(/databases/$(database)/documents/agents/$(agentId)).data.status == 'active'
+        && get(/databases/$(database)/documents/agents/$(agentId)).data.subscriptionEnd > request.time;
+    }
+
+    // ==================== VALIDATION BLUEPRINTS ====================
+
+    function isValidAgent(data, agentId) {
+      return data.keys().hasAll([
+          'uid',
+          'fullName',
+          'username',
+          'internalEmail',
+          'phone',
+          'status',
+          'planDuration',
+          'subscriptionStart',
+          'subscriptionEnd',
+          'createdAt',
+          'updatedAt',
+          'createdBy'
+        ])
+        && data.keys().hasOnly([
+          'uid',
+          'fullName',
+          'username',
+          'internalEmail',
+          'phone',
+          'status',
+          'planDuration',
+          'subscriptionStart',
+          'subscriptionEnd',
+          'notes',
+          'createdAt',
+          'updatedAt',
+          'createdBy'
+        ])
+        && !('password' in data)
+        && data.uid == agentId
+        && isValidId(data.uid)
+        && data.fullName is string && data.fullName.size() >= 2 && data.fullName.size() <= 120
+        && data.username is string && data.username.size() >= 3 && data.username.size() <= 40 && data.username.matches('^[a-z0-9._\\-]+$')
+        && data.internalEmail is string && data.internalEmail.size() >= 6 && data.internalEmail.size() <= 120
+        && data.phone is string && data.phone.size() >= 6 && data.phone.size() <= 30
+        && data.status in ['active', 'disabled']
+        && data.planDuration in ['6m', '12m', 'custom']
+        && data.subscriptionStart is timestamp
+        && data.subscriptionEnd is timestamp
+        && data.subscriptionEnd > data.subscriptionStart
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp
+        && isValidId(data.createdBy)
+        && isValidOptionalString(data, 'notes', 500);
+    }
+
+    function isValidTower(data, agentId) {
+      return data.keys().hasAll([
+          'agentId',
+          'name',
+          'location',
+          'capacity',
+          'status',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'agentId',
+          'name',
+          'location',
+          'capacity',
+          'status',
+          'notes',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.agentId == agentId
+        && isValidId(data.agentId)
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 100
+        && data.location is string && data.location.size() >= 1 && data.location.size() <= 160
+        && data.capacity is number && data.capacity >= 1 && data.capacity <= 10000
+        && data.status in ['active', 'maintenance', 'offline']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp
+        && isValidOptionalString(data, 'notes', 500);
+    }
+
+    function isValidSubscriber(data, agentId) {
+      return data.keys().hasAll([
+          'agentId',
+          'fullName',
+          'phone',
+          'username',
+          'towerId',
+          'towerName',
+          'planName',
+          'monthlyPrice',
+          'subscriptionStart',
+          'subscriptionEnd',
+          'status',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'agentId',
+          'fullName',
+          'phone',
+          'username',
+          'address',
+          'category',
+          'serviceType',
+          'towerId',
+          'towerName',
+          'planName',
+          'monthlyPrice',
+          'subscriptionStart',
+          'subscriptionEnd',
+          'status',
+          'notes',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.agentId == agentId
+        && isValidId(data.agentId)
+        && data.fullName is string && data.fullName.size() >= 2 && data.fullName.size() <= 120
+        && data.phone is string && data.phone.size() >= 6 && data.phone.size() <= 30
+        && data.username is string && data.username.size() >= 1 && data.username.size() <= 60
+        && isValidOptionalCategory(data)
+        && isValidOptionalString(data, 'serviceType', 60)
+        && data.towerId is string && data.towerId.size() <= 128
+        && data.towerName is string && data.towerName.size() <= 100
+        && data.planName is string && data.planName.size() >= 1 && data.planName.size() <= 80
+        && data.monthlyPrice is number && data.monthlyPrice >= 0 && data.monthlyPrice <= 100000000
+        && data.subscriptionStart is timestamp
+        && data.subscriptionEnd is timestamp
+        && data.subscriptionEnd > data.subscriptionStart
+        && data.status in ['active', 'expired', 'suspended']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp
+        && isValidOptionalString(data, 'address', 200)
+        && isValidOptionalString(data, 'notes', 500);
+    }
+
+    function isValidDebt(data, agentId) {
+      return data.keys().hasAll([
+          'agentId',
+          'subscriberId',
+          'subscriberName',
+          'totalAmount',
+          'paidAmount',
+          'remainingAmount',
+          'reason',
+          'dueDate',
+          'status',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'agentId',
+          'subscriberId',
+          'subscriberName',
+          'category',
+          'monthlySubscriptionId',
+          'totalAmount',
+          'paidAmount',
+          'remainingAmount',
+          'reason',
+          'dueDate',
+          'status',
+          'notes',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.agentId == agentId
+        && isValidId(data.agentId)
+        && isValidId(data.subscriberId)
+        && data.subscriberName is string && data.subscriberName.size() >= 1 && data.subscriberName.size() <= 120
+        && isValidOptionalCategory(data)
+        && isValidOptionalId(data, 'monthlySubscriptionId')
+        && data.totalAmount is number && data.totalAmount > 0 && data.totalAmount <= 100000000
+        && data.paidAmount is number && data.paidAmount >= 0 && data.paidAmount <= data.totalAmount
+        && data.remainingAmount is number && data.remainingAmount >= 0 && data.remainingAmount <= data.totalAmount
+        && data.reason is string && data.reason.size() >= 1 && data.reason.size() <= 200
+        && data.dueDate is timestamp
+        && data.status in ['unpaid', 'partial', 'paid']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp
+        && isValidOptionalString(data, 'notes', 500);
+    }
+
+    function isValidPayment(data, agentId) {
+      return data.keys().hasAll([
+          'agentId',
+          'subscriberId',
+          'subscriberName',
+          'type',
+          'amount',
+          'paidAt',
+          'createdAt'
+        ])
+        && data.keys().hasOnly([
+          'agentId',
+          'subscriberId',
+          'subscriberName',
+          'category',
+          'type',
+          'amount',
+          'referenceId',
+          'notes',
+          'paidAt',
+          'createdAt'
+        ])
+        && data.agentId == agentId
+        && isValidId(data.agentId)
+        && isValidId(data.subscriberId)
+        && data.subscriberName is string && data.subscriberName.size() >= 1 && data.subscriberName.size() <= 120
+        && isValidOptionalCategory(data)
+        && data.type in ['subscription', 'debt_payment']
+        && data.amount is number && data.amount > 0 && data.amount <= 100000000
+        && data.paidAt is timestamp
+        && data.createdAt is timestamp
+        && isValidOptionalString(data, 'referenceId', 128)
+        && isValidOptionalString(data, 'notes', 300);
+    }
+
+    function isValidMonthlySubscription(data, agentId) {
+      return data.keys().hasAll([
+          'agentId',
+          'subscriberId',
+          'subscriberName',
+          'subscriberPhone',
+          'category',
+          'towerId',
+          'towerName',
+          'subscriptionMonth',
+          'planName',
+          'amount',
+          'paidAmount',
+          'debtAmount',
+          'paymentStatus',
+          'activationDate',
+          'expiryDate',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'agentId',
+          'subscriberId',
+          'subscriberName',
+          'subscriberPhone',
+          'subscriberUsername',
+          'receiptNumber',
+          'category',
+          'serviceType',
+          'towerId',
+          'towerName',
+          'subscriptionMonth',
+          'planName',
+          'amount',
+          'paidAmount',
+          'debtAmount',
+          'paymentStatus',
+          'linkedDebtId',
+          'activationDate',
+          'expiryDate',
+          'notes',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.agentId == agentId
+        && isValidId(data.agentId)
+        && isValidId(data.subscriberId)
+        && data.subscriberName is string && data.subscriberName.size() >= 2 && data.subscriberName.size() <= 120
+        && data.subscriberPhone is string && data.subscriberPhone.size() >= 6 && data.subscriberPhone.size() <= 30
+        && isValidOptionalString(data, 'subscriberUsername', 60)
+        && isValidOptionalString(data, 'receiptNumber', 40)
+        && data.category in ['towers', 'national']
+        && isValidOptionalString(data, 'serviceType', 60)
+        && data.towerId is string && data.towerId.size() <= 128
+        && data.towerName is string && data.towerName.size() <= 100
+        && data.subscriptionMonth is string && data.subscriptionMonth.size() == 7 && data.subscriptionMonth.matches('^[0-9]{4}-(0[1-9]|1[0-2])$')
+        && data.planName is string && data.planName.size() >= 1 && data.planName.size() <= 80
+        && data.amount is number && data.amount >= 0 && data.amount <= 100000000
+        && data.paidAmount is number && data.paidAmount >= 0 && data.paidAmount <= data.amount
+        && data.debtAmount is number && data.debtAmount >= 0 && data.debtAmount <= data.amount
+        && data.paymentStatus in ['paid', 'received', 'has_debt', 'no_debt']
+        && isValidOptionalId(data, 'linkedDebtId')
+        && data.activationDate is timestamp
+        && data.expiryDate is timestamp
+        && data.expiryDate > data.activationDate
+        && isValidOptionalString(data, 'notes', 500)
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidAdminSettings(data) {
+      return data.keys().hasAll([
+          'contactPhone',
+          'updatedAt',
+          'updatedBy'
+        ])
+        && data.keys().hasOnly([
+          'contactPhone',
+          'whatsappCountryCode',
+          'updatedAt',
+          'updatedBy'
+        ])
+        && data.contactPhone is string && data.contactPhone.size() <= 30
+        && isValidOptionalString(data, 'whatsappCountryCode', 8)
+        && data.updatedAt is timestamp
+        && isValidId(data.updatedBy);
+    }
+
+    function isValidAgentSettings(data, agentId) {
+      return data.keys().hasAll([
+          'agentId',
+          'businessName',
+          'supportPhone',
+          'currency',
+          'expiryAlertDays',
+          'defaultPlans',
+          'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'agentId',
+          'businessName',
+          'supportPhone',
+          'whatsappCountryCode',
+          'currency',
+          'expiryAlertDays',
+          'defaultPlans',
+          'updatedAt'
+        ])
+        && data.agentId == agentId
+        && isValidId(data.agentId)
+        && data.businessName is string && data.businessName.size() >= 1 && data.businessName.size() <= 120
+        && data.supportPhone is string && data.supportPhone.size() <= 30
+        && isValidOptionalString(data, 'whatsappCountryCode', 8)
+        && data.currency is string && data.currency.size() >= 1 && data.currency.size() <= 16
+        && data.expiryAlertDays is number && data.expiryAlertDays >= 1 && data.expiryAlertDays <= 90
+        && data.defaultPlans is list && data.defaultPlans.size() <= 15
+        && (data.defaultPlans.size() == 0 || (data.defaultPlans[0] is map && data.defaultPlans[0].name is string && data.defaultPlans[0].name.size() <= 80))
+        && data.updatedAt is timestamp;
+    }
+
+    // ==================== COLLECTION RULES ====================
+
+    // 1. Admins directory: strictly immutable from client SDKs (prevents privilege escalation & deletion)
+    match /admins/{uid} {
+      allow get: if isValidId(uid) && isSignedIn() && request.auth.uid == uid;
+      allow list, create, update, delete: if false;
+    }
+
+    // 1b. Admin contact settings: Admin writes contactPhone for 7-day renewal notices; registered agents may read general doc
+    match /adminSettings/{settingId} {
+      allow get: if settingId == 'general'
+        && (isAdmin() || (isSignedIn() && exists(/databases/$(database)/documents/agents/$(request.auth.uid))));
+      allow list: if false;
+
+      allow create: if settingId == 'general'
+        && isAdmin()
+        && isValidAdminSettings(incoming())
+        && incoming().updatedBy == request.auth.uid
+        && incoming().updatedAt == request.time;
+
+      allow update: if settingId == 'general'
+        && isAdmin()
+        && isValidAdminSettings(incoming())
+        && incoming().updatedBy == request.auth.uid
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'contactPhone',
+          'whatsappCountryCode',
+          'updatedBy',
+          'updatedAt'
+        ]);
+
+      allow delete: if false;
+    }
+
+    // 2. Agents master collection: managed exclusively by Admin; agent can only get own record to verify state
+    match /agents/{agentId} {
+      allow get: if isValidId(agentId) && (isAdmin() || (isSignedIn() && request.auth.uid == agentId));
+      allow list: if isAdmin();
+
+      allow create: if isAdmin()
+        && isValidId(agentId)
+        && isValidAgent(incoming(), agentId)
+        && incoming().createdBy == request.auth.uid
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      allow update: if isAdmin()
+        && isValidId(agentId)
+        && isValidAgent(incoming(), agentId)
+        && incoming().uid == existing().uid
+        && incoming().username == existing().username
+        && incoming().internalEmail == existing().internalEmail
+        && incoming().createdAt == existing().createdAt
+        && incoming().createdBy == existing().createdBy
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'fullName',
+          'phone',
+          'status',
+          'planDuration',
+          'subscriptionStart',
+          'subscriptionEnd',
+          'notes',
+          'updatedAt'
+        ]);
+
+      allow delete: if isAdmin() && isValidId(agentId);
+
+      // 3. Towers subcollection (isolated per agent + active/unexpired subscription gate)
+      match /towers/{towerId} {
+        allow get: if isValidId(agentId) && isValidId(towerId) && (isAdmin() || isActiveAgent(agentId));
+        allow list: if isAdmin() || (isSignedIn() && resource.data.agentId == request.auth.uid && isActiveAgent(agentId));
+
+        allow create: if isValidId(agentId)
+          && isValidId(towerId)
+          && isValidTower(incoming(), agentId)
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && (isAdmin() || isActiveAgent(agentId));
+
+        allow update: if isValidId(agentId)
+          && isValidId(towerId)
+          && isValidTower(incoming(), agentId)
+          && incoming().agentId == existing().agentId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly([
+            'name',
+            'location',
+            'capacity',
+            'status',
+            'notes',
+            'updatedAt'
+          ])
+          && (isAdmin() || isActiveAgent(agentId));
+
+        allow delete: if isValidId(agentId) && isValidId(towerId) && (isAdmin() || isActiveAgent(agentId));
+      }
+
+      // 4. Subscribers subcollection (isolated per agent + active/unexpired subscription gate)
+      match /subscribers/{subscriberId} {
+        allow get: if isValidId(agentId) && isValidId(subscriberId) && (isAdmin() || isActiveAgent(agentId));
+        allow list: if isAdmin() || (isSignedIn() && resource.data.agentId == request.auth.uid && isActiveAgent(agentId));
+
+        allow create: if isValidId(agentId)
+          && isValidId(subscriberId)
+          && isValidSubscriber(incoming(), agentId)
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && (isAdmin() || isActiveAgent(agentId));
+
+        allow update: if isValidId(agentId)
+          && isValidId(subscriberId)
+          && isValidSubscriber(incoming(), agentId)
+          && incoming().agentId == existing().agentId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && (
+            isAdmin()
+            || (
+              isActiveAgent(agentId)
+              && (
+                // Action 1: Activate / Renew subscription
+                incoming().diff(existing()).affectedKeys().hasOnly([
+                  'planName',
+                  'monthlyPrice',
+                  'serviceType',
+                  'subscriptionStart',
+                  'subscriptionEnd',
+                  'status',
+                  'notes',
+                  'updatedAt'
+                ])
+                // Action 2: Full profile/plan edit
+                || incoming().diff(existing()).affectedKeys().hasOnly([
+                  'fullName',
+                  'phone',
+                  'username',
+                  'address',
+                  'category',
+                  'serviceType',
+                  'towerId',
+                  'towerName',
+                  'planName',
+                  'monthlyPrice',
+                  'subscriptionStart',
+                  'subscriptionEnd',
+                  'status',
+                  'notes',
+                  'updatedAt'
+                ])
+              )
+            )
+          );
+
+        allow delete: if isValidId(agentId) && isValidId(subscriberId) && (isAdmin() || isActiveAgent(agentId));
+      }
+
+      // 5. Debts subcollection (isolated per agent + active gate + terminal paid lock)
+      match /debts/{debtId} {
+        allow get: if isValidId(agentId) && isValidId(debtId) && (isAdmin() || isActiveAgent(agentId));
+        allow list: if isAdmin() || (isSignedIn() && resource.data.agentId == request.auth.uid && isActiveAgent(agentId));
+
+        allow create: if isValidId(agentId)
+          && isValidId(debtId)
+          && isValidDebt(incoming(), agentId)
+          && incoming().paidAmount == 0
+          && incoming().remainingAmount == incoming().totalAmount
+          && incoming().status == 'unpaid'
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && exists(/databases/$(database)/documents/agents/$(agentId)/subscribers/$(incoming().subscriberId))
+          && (isAdmin() || isActiveAgent(agentId));
+
+        allow update: if isValidId(agentId)
+          && isValidId(debtId)
+          && isValidDebt(incoming(), agentId)
+          && incoming().agentId == existing().agentId
+          && incoming().subscriberId == existing().subscriberId
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && (
+            isAdmin()
+            || (
+              isActiveAgent(agentId)
+              // Terminal state lock: cannot reopen an already fully paid debt
+              && existing().status != 'paid'
+              // Action: record repayment
+              && incoming().paidAmount > existing().paidAmount
+              && incoming().remainingAmount < existing().remainingAmount
+              && incoming().diff(existing()).affectedKeys().hasOnly([
+                'paidAmount',
+                'remainingAmount',
+                'status',
+                'updatedAt'
+              ])
+            )
+          );
+
+        allow delete: if isValidId(agentId) && isValidId(debtId) && (isAdmin() || isActiveAgent(agentId));
+      }
+
+      // 6. Payments ledger subcollection (append-only financial records for active agent)
+      match /payments/{paymentId} {
+        allow get: if isValidId(agentId) && isValidId(paymentId) && (isAdmin() || isActiveAgent(agentId));
+        allow list: if isAdmin() || (isSignedIn() && resource.data.agentId == request.auth.uid && isActiveAgent(agentId));
+
+        allow create: if isValidId(agentId)
+          && isValidId(paymentId)
+          && isValidPayment(incoming(), agentId)
+          && incoming().paidAt == request.time
+          && incoming().createdAt == request.time
+          && (isAdmin() || isActiveAgent(agentId));
+
+        allow update: if false;
+        allow delete: if isAdmin() && isValidId(agentId) && isValidId(paymentId);
+      }
+
+      // 7. Monthly Subscriptions archived ledger (created strictly upon actual subscription activation/renewal)
+      match /monthlySubscriptions/{recordId} {
+        allow get: if isValidId(agentId) && isValidId(recordId) && (isAdmin() || isActiveAgent(agentId));
+        allow list: if isAdmin() || (isSignedIn() && resource.data.agentId == request.auth.uid && isActiveAgent(agentId));
+
+        allow create: if isValidId(agentId)
+          && isValidId(recordId)
+          && isValidMonthlySubscription(incoming(), agentId)
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && exists(/databases/$(database)/documents/agents/$(agentId)/subscribers/$(incoming().subscriberId))
+          && (isAdmin() || isActiveAgent(agentId));
+
+        allow update: if isValidId(agentId)
+          && isValidId(recordId)
+          && isValidMonthlySubscription(incoming(), agentId)
+          && incoming().agentId == existing().agentId
+          && incoming().subscriberId == existing().subscriberId
+          && incoming().category == existing().category
+          && incoming().subscriptionMonth == existing().subscriptionMonth
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && (
+            isAdmin()
+            || (
+              isActiveAgent(agentId)
+              && incoming().diff(existing()).affectedKeys().hasOnly([
+                'paidAmount',
+                'debtAmount',
+                'paymentStatus',
+                'linkedDebtId',
+                'notes',
+                'updatedAt'
+              ])
+            )
+          );
+
+        allow delete: if isValidId(agentId) && isValidId(recordId) && (isAdmin() || isActiveAgent(agentId));
+      }
+
+      // 8. Agent workspace settings (strictly scoped to settings/general)
+      match /settings/{settingId} {
+        allow get: if isValidId(agentId) && settingId == 'general' && (isAdmin() || isActiveAgent(agentId));
+        allow list: if false;
+
+        allow create: if isValidId(agentId)
+          && settingId == 'general'
+          && isValidAgentSettings(incoming(), agentId)
+          && incoming().updatedAt == request.time
+          && (isAdmin() || isActiveAgent(agentId));
+
+        allow update: if isValidId(agentId)
+          && settingId == 'general'
+          && isValidAgentSettings(incoming(), agentId)
+          && incoming().agentId == existing().agentId
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly([
+            'businessName',
+            'supportPhone',
+            'whatsappCountryCode',
+            'currency',
+            'expiryAlertDays',
+            'defaultPlans',
+            'updatedAt'
+          ])
+          && (isAdmin() || isActiveAgent(agentId));
+
+        allow delete: if isAdmin() && isValidId(agentId) && settingId == 'general';
+      }
+    }
+  }
+}
